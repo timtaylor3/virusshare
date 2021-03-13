@@ -22,7 +22,7 @@ class VirusShare:
     def __init__(self, apikey):
         self.apikey = apikey
 
-    def error_code(self, e):
+    def error_code(self, code):
         
         """
 
@@ -39,38 +39,45 @@ class VirusShare:
         
         response = dict()
 
-        if e.code == 204:
-            response = {e.code: 'Request rate limit exceeded: {}'.format(e.reason)}
+        if code == 204:
+            response = {code: 'Request rate limit exceeded'}
 
-        elif e.code == 400:
-            response = {e.code: 'Bad request: {} {}'.format(e.reason)}
+        elif code == 400:
+            response = {code: 'Bad request'}
         
-        elif e.code == 403:
-            response = {e.code: 'Forbidden: {} {}'.format(e.reason)}
+        elif code == 403:
+            response = {code: 'Forbidden'}
         
-        elif e.code == 404:
-            response = {e.code, 'Not found: {} {}'.format(e.reason)}
+        elif code == 404:
+            response = {code, 'Not found'}
 
-        elif e.code == 500:
-            response = {e.code: 'Internal server error: {} {}'.format(e.reason)}
+        elif code == 500:
+            response = {code: 'Internal server error:'}
         
-        elif e.code == 503: 
-            response = {e.code: 'Service unavailable: {} {}'.format(e.reason)}
+        elif code == 503: 
+            response = {code: 'Service unavailable'}
         
         else:
-            response = {e.code: 'Unknown: {} '.format(e.reason)}
+            response = {code: 'Unknown Code: {} '.format(code)}
 
         return response
 
 
     def get_request(self, type, hash):
+
+        # Need to validate the hash
+
         URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(type, self.apikey, hash)
 
-        results =  requests.get(url = URL).json()
-        #add_hash_field = {"hash_used": hash}
-        results.update({"hash_used": hash})
+        results =  requests.get(url = URL)
 
-        return results
+        if results.status_code != 200:
+            check_status_code = self.error_code(results.status_code)
+
+        json_data = results.json()
+        json_data.update({"hash_used": hash})
+        
+        return json_data
 
 
     def throttle(self, start_time):

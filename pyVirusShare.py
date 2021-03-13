@@ -1,15 +1,25 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 __author__ = "Tim Taylor"
 __version__ = "Dev"
+__credit__ = "Florian Roth"
 
-import argparse
-import re
+"""
+
+Inspired by Florian Roth's munin script
+
+"""
 import json
+import os
+import re
+import requests
+import sys
+import time
 
-from urllib import request, parse, error, 
+from  argparse import ArgumentParser
+from configparser import ConfigParser
 
 class VirusShare:
-    def __init__(apikey):
+    def __init__(self, apikey):
         self.apikey = apikey
 
     def error_code(self, e):
@@ -28,104 +38,125 @@ class VirusShare:
         """
         
         response = dict()
-        # Change response assigment to dict.
 
         if e.code == 204:
-            response = 'Request rate limit exceeded. Error: {} {}'.format(e.code, e.reason)
-        
-        else if e.code == 400:
-            response = 'Bad request. Error: {} {}'.format(e.code, e.reason)
-        
-        else if e.code == 403:
-            response = 'Forbidden. Error: {} {}'.format(e.code, e.reason)
-        
-        else if e.code == 404:
-            response = 'Not found. Error: {} {}'.format(e.code, e.reason)
+            response = {e.code: 'Request rate limit exceeded: {}'.format(e.reason)}
 
-        else if e.code == 500:
-            response = 'Internal server error. Error: {} {}'.format(e.code, e.reason)
+        elif e.code == 400:
+            response = {e.code: 'Bad request: {} {}'.format(e.reason)}
         
-        else if e.code == 503:   
-            response = 'Service unavailable. Error: {} {}'.format(e.code, e.reason)
+        elif e.code == 403:
+            response = {e.code: 'Forbidden: {} {}'.format(e.reason)}
+        
+        elif e.code == 404:
+            response = {e.code, 'Not found: {} {}'.format(e.reason)}
+
+        elif e.code == 500:
+            response = {e.code: 'Internal server error: {} {}'.format(e.reason)}
+        
+        elif e.code == 503: 
+            response = {e.code: 'Service unavailable: {} {}'.format(e.reason)}
         
         else:
-            response = 'Unknown. Error: {} {} occured'.format(e.code, e.reason)
+            response = {e.code: 'Unknown: {} '.format(e.reason)}
 
         return response
 
-    def report(self, hash):
+
+    def get_request(self, type, hash):
+        URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(type, self.apikey, hash)
+
+        results =  requests.get(url = URL).json()
+        #add_hash_field = {"hash_used": hash}
+        results.update({"hash_used": hash})
+
+        return results
+
+
+    def throttle(self, start_time):
+        throttle_time = 16
+        remaining_time = max(0, throttle_time - int(time.time() - start_time))
+        time.sleep(remaining_time)
+
+
+    def bulk_search(self, hashes):
+        results = list()
+        for hash in hashes:
+            start_time = time.time()
+            results.append(self.get_request('file', hash))
+
+            self.throttle(start_time)
+
         
-        response = ''
-
-        try:
-            data = urllib.parse.urlencode(parameters)
-            data = data.encode('ascii')
-            req = urllib.request.Request(url, data)
-            response = urllib.request.urlopen(req)
-
-        except urllib.error.HTTPError as e:
-            response = self.error_code(e)
-
-        json = response.read()  
-
-        if json == '':
-            raise TypeError('Too many requests')
-
-        return response
-
-    def bulk_search(self, file):
-        pass
-
-    def get_sha1s_from_file(self, file):
-        SHA1_PATTERN = re.compile(r'[a-f\d]{40}')
-        f = open(file, 'r')
-        data = f.read()
-        file_sha1s = re.findall(MD5_PATTERN, data)
-
-        return file_sha1s
+        return results
 
 
-    def get_md5_from_file(self, file):
-        MD5_PATTERN = re.compile(r'[a-f\d]{32}')
-        f = open(file, 'r')
-        data = f.read()
-        file_md5s = re.findall(MD5_PATTERN, data)
+    def get_hashes_from_file(self, file):
+        hashes = list()
+        with open(file, 'r') as f:
+            for line in f:
+                hashes.append(line.rstrip())
 
-        return file_md5s
+        return hashes
 
-    def j
 
-"""
-try:
-        json = response.read()   
-        if json == '':
-            raise TypeError('Too many requests')
-        dict = simplejson.loads(json)
-        body += str(md5_sum) + ' found in VirusTotal Database : '
-        response_code = dict['response_code']
-        if response_code == 1:
-            body += 'Yes\n'
-            body += '  Detection Ratio : ' + str(dict['positives']) + '/' + str(dict['total']) + '\n'
-            body += '  Scan Date       : ' + str(dict['scan_date'] + '\n')
-            body += '  Scan URL        : ' + str(dict['permalink'] + '\n')
-            if 'Symantec' in dict['scans']:
-                dict = dict['scans']['Symantec']
-                body += '  Symantec :\n'
-                if 'detected' in dict:
-                    body += '    Detection : ' + str(dict['result']) + '\n'
-                    body += '    Version   : ' + str(dict['version']) + '\n'
-                    body += '    Update    : ' + str(dict['update']) + '\n'
-                else:
-                    body += '    Detection : None\n'
-            else:
-                body += '  Symantec        : N/A\n'
+    def write_output(self, data):
+        for line in data:
+            print(line['hash_used'])
+            print(line)
+            print("\n")
+        
+
+def main():
+    parser = ArgumentParser(prog='VirusShare Lookups',
+                            description='Bulk lookups against the VirusShare website using a personal api key',
+                            usage='%(prog)s [options]',
+                            epilog='Version: {}'.format(__version__))
+    parser.add_argument('-f', help='Path to file containing the hashes (Required')
+    parser.add_argument('-v', help='Show version and exit')
+    args = parser.parse_args()
+
+    if args.v:
+        print('Version: {}'.format(__version__))
+        sys.exit(0)
+    
+    script_start_time = time.time()
+
+    api_key_file = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), 'apikey.txt'))
+
+    apikey = ''
+    if os.path.isfile(api_key_file):
+
+        config = ConfigParser()
+        config.read([api_key_file])
+        config.apikey_config = dict(config.items("APIKEYS"))
+        apikey = config.apikey_config['vs']
+
+    else:
+        print('ERROR: No {} was not found, exiting'.format(api_key_file))
+        sys.exit(-1)
+
+    hash_file = args.f
+
+    if hash_file:
+        if os.path.isfile:
+            hashlookup = VirusShare(apikey)
+            data = hashlookup.get_hashes_from_file(hash_file)
+            results = hashlookup.bulk_search(data)
+            hashlookup.write_output(results)
+
         else:
-            body += 'No\n'
-
-    except:
-        body += 'Sample MD5 could not be looked up due to an error.\n'
-    print (body)
-    return
+            print('ERROR: {} was not a valid file')
+            sys.exit(-1)
+    else:
+        print('ERROR: -f is required')
 
 
-"""
+if __name__ == "__main__":
+
+    if sys.version_info[0] == 3:
+        main()
+
+    else:
+        print('Python3 is required')
+        print('Detected Python {}.{}.{}'.format(sys_version_info[0],sys_version_info[1],sys_version_info[2] ))

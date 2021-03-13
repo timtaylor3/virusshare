@@ -19,9 +19,10 @@ from  argparse import ArgumentParser
 from configparser import ConfigParser
 
 class VirusShare:
-    def __init__(self, apikey, lookup_type):
+    def __init__(self, apikey, lookup_type, output_type):
         self.apikey = apikey
         self.lookup_type = lookup_type
+        self.output_type = output_type
 
     def error_code(self, code):
         
@@ -94,11 +95,17 @@ class VirusShare:
                 check_status_code = self.error_code(results.status_code)
 
             json_data = results.json()
-            json_data.update({"hash_used": hash})
-        
+            json_data.update({"hash_used": hash, "URL": URL})
+            if self.lookup_type == 'quick':
+                if json_data['response'] == 0:
+                    json_data['response'] = 'Not Found'
+                if json_data['response'] == 1:
+                    json_data['response'] = 'Malware'
+                if json_data['response'] == 2: 
+                    json_data['response'] = 'Benign'              
+
         return json_data
  
-
 
     def throttle(self, start_time):
         throttle_time = 16
@@ -130,10 +137,20 @@ class VirusShare:
 
 
     def write_output(self, data):
-        for line in data:
-            print(line['hash_used'])
-            print(line)
-            print("\n")
+        if self.output_type == 'json':
+                for line in data:
+                    print(line)
+
+        else:
+            if self.lookup_type == 'quick':
+                for line in data:
+                        print('{}, {}, {}'.format(line['hash_used'], line['response'], line['URL']))
+
+            elif self.lookup_type == 'file':
+                for line in data:
+                    # 'positives': 15, 'total': 42
+                    print('{}, {}, {}, {}, {}'.format(line['hash_used'], line['md5'], line['sha1'], line['response'], line['URL']))
+                    print('{}, {}'.format(line['extension'], line['exif']))
         
 
 def main():
@@ -142,9 +159,11 @@ def main():
                             usage='%(prog)s [options]',
                             epilog='Version: {}'.format(__version__))
     parser.add_argument('-f', help='Path to file containing the hashes (Required')
-    parser.add_argument('-t', help='Lookup Type, Chose from file or quick quick, Default is "Quick" (Optional', 
-                        choices=['quick', 'file'], default="quick")
+    parser.add_argument('-t', help='Lookup Type, file or quick, Default is "quick" (Optional)', 
+                            choices=['quick', 'file'], default="quick")
+    parser.add_argument('-o', help='Output Type (Optional)',  choices=['json'], default="json")                  
     parser.add_argument('-v', help='Show version and exit')
+    
     args = parser.parse_args()
 
     if args.v:
@@ -152,6 +171,7 @@ def main():
         sys.exit(0)
 
     lookup_type = args.t
+    output_type = args.o
     
     script_start_time = time.time()
 
@@ -173,7 +193,7 @@ def main():
 
     if hash_file:
         if os.path.isfile:
-            hashlookup = VirusShare(apikey, lookup_type)
+            hashlookup = VirusShare(apikey, lookup_type, output_type)
             data = hashlookup.get_hashes_from_file(hash_file)
             results = hashlookup.bulk_search(data)
             hashlookup.write_output(results)

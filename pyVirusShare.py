@@ -65,19 +65,38 @@ class VirusShare:
 
     def get_request(self, type, hash):
 
-        # Need to validate the hash
+        json_data = ''
+        hash_match = ''
+        hash_len = len(hash)
 
-        URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(type, self.apikey, hash)
+        if hash_len == 32:
+            hash_pattern = re.compile('^[a-fA-F0-9]{32}$')
 
-        results =  requests.get(url = URL)
+        elif hash_len == 40:
+            hash_pattern = re.compile('^[a-fA-F0-9]{40}$') 
 
-        if results.status_code != 200:
-            check_status_code = self.error_code(results.status_code)
+        elif hash_len == 64:
+            hash_pattern = re.compile('^[a-fA-F0-9]{64}$')
 
-        json_data = results.json()
-        json_data.update({"hash_used": hash})
+        else:
+            hash_pattern = False
+            json_data = False
+
+        if hash_pattern:
+            hash_match = hash_pattern.match(hash)
+
+            URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(type, self.apikey, hash)
+
+            results =  requests.get(url = URL)
+
+            if results.status_code != 200:
+                check_status_code = self.error_code(results.status_code)
+
+            json_data = results.json()
+            json_data.update({"hash_used": hash})
         
         return json_data
+ 
 
 
     def throttle(self, start_time):
@@ -90,7 +109,9 @@ class VirusShare:
         results = list()
         for hash in hashes:
             start_time = time.time()
-            results.append(self.get_request('file', hash))
+            lookup = self.get_request('file', hash)
+            if lookup:
+                results.append(lookup)
 
             self.throttle(start_time)
 

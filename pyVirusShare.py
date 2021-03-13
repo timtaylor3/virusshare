@@ -19,8 +19,9 @@ from  argparse import ArgumentParser
 from configparser import ConfigParser
 
 class VirusShare:
-    def __init__(self, apikey):
+    def __init__(self, apikey, lookup_type):
         self.apikey = apikey
+        self.lookup_type = lookup_type
 
     def error_code(self, code):
         
@@ -85,7 +86,7 @@ class VirusShare:
         if hash_pattern:
             hash_match = hash_pattern.match(hash)
 
-            URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(type, self.apikey, hash)
+            URL = r'https://virusshare.com/apiv2/{}?apikey={}&hash={}'.format(self.lookup_type, self.apikey, hash)
 
             results =  requests.get(url = URL)
 
@@ -141,12 +142,16 @@ def main():
                             usage='%(prog)s [options]',
                             epilog='Version: {}'.format(__version__))
     parser.add_argument('-f', help='Path to file containing the hashes (Required')
+    parser.add_argument('-t', help='Lookup Type, Chose from file or quick quick, Default is "Quick" (Optional', 
+                        choices=['quick', 'file'], default="quick")
     parser.add_argument('-v', help='Show version and exit')
     args = parser.parse_args()
 
     if args.v:
         print('Version: {}'.format(__version__))
         sys.exit(0)
+
+    lookup_type = args.t
     
     script_start_time = time.time()
 
@@ -168,7 +173,7 @@ def main():
 
     if hash_file:
         if os.path.isfile:
-            hashlookup = VirusShare(apikey)
+            hashlookup = VirusShare(apikey, lookup_type)
             data = hashlookup.get_hashes_from_file(hash_file)
             results = hashlookup.bulk_search(data)
             hashlookup.write_output(results)
